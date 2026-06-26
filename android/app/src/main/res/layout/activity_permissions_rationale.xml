@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="GalaxyBridge Health Connect 权限说明"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:lineSpacingExtra="4dp"
+            android:text="GalaxyBridge 只读取你授权的 Health Connect 健康数据，用于在本机同步服务中查看和传输睡眠、心率、步数、运动、体温、血氧、呼吸频率、体重、体脂和消耗热量等数据。"
+            android:textSize="16sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:lineSpacingExtra="4dp"
+            android:text="数据读取发生在你的设备上。应用不会在未经你操作的情况下把 Health Connect 数据上传到第三方服务；同步接口只在你启动本机 Server 后可用。"
+            android:textSize="16sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:lineSpacingExtra="4dp"
+            android:text="你可以随时在系统设置或 Health Connect 设置中撤销这些权限。撤销后，GalaxyBridge 会停止读取对应类型的数据。"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/btnCloseRationale"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="关闭" />
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.GalaxyBridge" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <item name="colorPrimary">#1976D2</item>
+        <item name="colorPrimaryVariant">#1565C0</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#26A69A</item>
+        <item name="colorSecondaryVariant">#00897B</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+    </style>
+</resources>

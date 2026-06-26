@@ -1,0 +1,28 @@
+.DS_Store
+
+# Android
+android/.gradle/
+android/.idea/
+android/local.properties
+android/build/
+android/app/build/
+android/*.iml
+android/**/*.apk
+android/**/*.aab
+android/**/*.jks
+android/**/*.keystore
+
+# iOS / Xcode
+ios/build/
+ios/DerivedData/
+ios/**/*.xcuserstate
+ios/**/xcuserdata/
+ios/*.ipa
+ios/*.app
+ios/*.dSYM
+ios/**/*.mobileprovision
+
+# Local automation and logs
+*.log
+*.xcresult
+
