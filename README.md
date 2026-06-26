@@ -145,6 +145,53 @@ change-me
 
 Free Apple developer signing expires after 7 days. A paid Apple Developer Program account is recommended for long-lived installs.
 
+### Optional: Automatic Re-Signing With a Mac
+
+If you use a free Apple developer account, the iOS app expires after 7 days. One practical workaround is to let a trusted Mac rebuild and reinstall the app automatically whenever the iPhone is reachable.
+
+This does not bypass Apple's 7-day signing limit. It simply refreshes the Xcode-signed build before or after it expires.
+
+Recommended setup:
+
+1. Pair the iPhone with Xcode once.
+2. Confirm the Mac can see the iPhone:
+
+```bash
+xcrun devicectl list devices
+```
+
+3. Build the app with Xcode command line tools:
+
+```bash
+xcodebuild \
+  -project /path/to/GalaxyBridge/ios/sync.xcodeproj \
+  -scheme sync \
+  -configuration Release \
+  -destination "generic/platform=iOS" \
+  -derivedDataPath /tmp/GalaxyBridgeBuild \
+  build
+```
+
+4. Install the built app to the paired iPhone:
+
+```bash
+xcrun devicectl device install app \
+  --device YOUR_DEVICE_ID \
+  /tmp/GalaxyBridgeBuild/Build/Products/Release-iphoneos/sync.app
+```
+
+5. Put those commands in a local script and run it with `launchd`, `cron`, or any scheduler you trust.
+
+A safe automation should:
+
+- Keep device IDs, Apple team IDs, and local paths outside the public repo.
+- Check that the iPhone is `connected` before building.
+- Avoid reinstalling too often, for example skip if the last successful install was less than 24 hours ago.
+- Prefer Wi-Fi installation when `devicectl` can see the phone wirelessly, with USB as a fallback.
+- Log failures so signing/profile issues are visible.
+
+Do not commit your personal auto-sign script if it contains device identifiers, local filesystem paths, Apple team IDs, or other machine-specific details.
+
 ### iOS Permissions
 
 The iOS app needs:
