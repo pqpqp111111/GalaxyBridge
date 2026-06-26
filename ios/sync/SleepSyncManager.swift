@@ -9,6 +9,9 @@ class SleepSyncManager: ObservableObject {
     private let healthStore = HKHealthStore()
     private var serverURL: String
     private var lastSyncAttempt: Date?
+    private static let bridgeSource = "GalaxyBridge"
+    private static let sourceMetadataKey = "source"
+    private static let originalIdMetadataKey = "originalId"
 
     init() {
         let ip = UserDefaults.standard.string(forKey: "serverIP") ?? ""
@@ -62,9 +65,9 @@ class SleepSyncManager: ObservableObject {
             await MainActor.run {
                 status = "Writing \(sleepData.sleep.count) records to HealthKit..."
             }
-            try await writeSleepToHealthKit(sleepData)
+            let result = try await writeSleepToHealthKit(sleepData)
             await MainActor.run {
-                status = "Done! \(sleepData.sleep.count) sleep records synced."
+                status = "Done! \(result.importedNights) new nights, \(result.savedStages) stages synced. Skipped \(result.skippedExistingNights) existing nights."
                 isLoading = false
             }
             return true
@@ -125,30 +128,119 @@ class SleepSyncManager: ObservableObject {
         }
     }
 
-    private func writeSleepToHealthKit(_ response: SyncResponse) async throws {
+    private func writeSleepToHealthKit(_ response: SyncResponse) async throws -> WriteResult {
         let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!
+        var result = WriteResult()
 
         for sleepRecord in response.sleep {
-            for stage in sleepRecord.stages {
+            let samples = sleepRecord.stages.compactMap { stage -> HKCategorySample? in
+                guard stage.end > stage.start else {
+                    return nil
+                }
+
                 let startDate = Date(timeIntervalSince1970: Double(stage.start) / 1000.0)
                 let endDate = Date(timeIntervalSince1970: Double(stage.end) / 1000.0)
 
                 guard let sleepValue = mapStageToHealthKit(stage.stage) else {
-                    continue
+                    return nil
                 }
 
-                let sample = HKCategorySample(
+                return HKCategorySample(
                     type: sleepType,
                     value: sleepValue.rawValue,
                     start: startDate,
                     end: endDate,
                     metadata: [
-                        "source": "GalaxyBridge",
-                        "originalId": sleepRecord.id
+                        Self.sourceMetadataKey: Self.bridgeSource,
+                        Self.originalIdMetadataKey: sleepRecord.id
                     ]
                 )
+            }
 
-                try await healthStore.save(sample)
+            guard !samples.isEmpty else {
+                continue
+            }
+
+            let start = samples.map(\.startDate).min()!
+            let end = samples.map(\.endDate).max()!
+            let alreadyImported = try await hasExistingGalaxyBridgeSamples(
+                sleepType: sleepType,
+                originalId: sleepRecord.id,
+                start: start,
+                end: end
+            )
+
+            if alreadyImported {
+                result.skippedExistingNights += 1
+                continue
+            }
+
+            try await save(samples)
+
+            result.importedNights += 1
+            result.savedStages += samples.count
+        }
+
+        return result
+    }
+
+    private func hasExistingGalaxyBridgeSamples(
+        sleepType: HKCategoryType,
+        originalId: String,
+        start: Date,
+        end: Date
+    ) async throws -> Bool {
+        let datePredicate = HKQuery.predicateForSamples(
+            withStart: start,
+            end: end,
+            options: []
+        )
+        let originalIdPredicate = HKQuery.predicateForObjects(
+            withMetadataKey: Self.originalIdMetadataKey,
+            allowedValues: [originalId]
+        )
+        let sourcePredicate = HKQuery.predicateForObjects(
+            withMetadataKey: Self.sourceMetadataKey,
+            allowedValues: [Self.bridgeSource]
+        )
+        let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            datePredicate,
+            originalIdPredicate,
+            sourcePredicate
+        ])
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: sleepType,
+                predicate: predicate,
+                limit: 1,
+                sortDescriptors: nil
+            ) { _, samples, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                continuation.resume(returning: samples?.isEmpty == false)
+            }
+
+            healthStore.execute(query)
+        }
+    }
+
+    private func save(_ samples: [HKSample]) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            healthStore.save(samples) { success, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                if success {
+                    continuation.resume()
+                } else {
+                    continuation.resume(throwing: SyncError.healthKitSaveFailed)
+                }
             }
         }
     }
@@ -172,6 +264,7 @@ enum SyncError: LocalizedError {
     case invalidURL
     case serverError
     case decodingFailed(String)
+    case healthKitSaveFailed
 
     var errorDescription: String? {
         switch self {
@@ -183,8 +276,16 @@ enum SyncError: LocalizedError {
             return "Server returned an error. Check Android server is running."
         case .decodingFailed(let message):
             return message
+        case .healthKitSaveFailed:
+            return "HealthKit did not save the sleep samples."
         }
     }
+}
+
+private struct WriteResult {
+    var importedNights = 0
+    var savedStages = 0
+    var skippedExistingNights = 0
 }
 
 private extension SleepSyncManager {
