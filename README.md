@@ -1,11 +1,11 @@
 # GalaxyBridge
 
-GalaxyBridge syncs Samsung Health sleep stages from an Android phone to Apple Health on iPhone.
+GalaxyBridge syncs Samsung Health sleep stages from an Android phone to Apple Health on iPhone. The Android phone runs a local HTTP server, advertises itself with Bonjour/mDNS and BLE discovery, and the iPhone app writes the imported sleep stages into HealthKit.
 
 This repository contains two apps:
 
-- `android/`: Android Health Connect collector and local HTTP server.
-- `ios/`: iOS HealthKit writer app with manual and background sync support.
+- `android/`: Android Health Connect collector, local HTTP server, Bonjour/mDNS publisher, and BLE discovery advertiser.
+- `ios/`: iOS HealthKit writer app with manual sync, background sync, and BLE-assisted server discovery.
 
 ## Project Status
 
@@ -14,6 +14,7 @@ The end-to-end prototype has been tested on a Samsung Android phone and an iPhon
 - Android reads Samsung Health sleep sessions through Health Connect.
 - The Android app serves JSON locally over HTTP.
 - Bonjour/NSD service discovery advertises the local server.
+- BLE discovery advertises the local HTTP endpoint so the iOS app can auto-fill the Android IP and port without Bluetooth pairing.
 - The iOS app fetches sleep stages and writes them into Apple Health through HealthKit.
 
 The current server response is intentionally conservative: it only returns Samsung Health records from `com.sec.android.app.shealth`, only nights with non-empty stage data, and only stages whose `end` is later than `start`.
@@ -38,7 +39,14 @@ The server also filters out invalid stages where `end <= start`.
 
 The Android app runs a foreground service and exposes the sync API on port `8787`.
 
-It registers a Bonjour/NSD service:
+It supports two discovery paths:
+
+1. Bonjour/NSD over the local network.
+2. BLE discovery for finding the HTTP endpoint when IP addresses change.
+
+BLE is used only for discovery. It does not transfer sleep data and it does not broadcast the bridge token. After discovery, all sync traffic still uses the local HTTP API with the `X-Bridge-Token` header.
+
+The Bonjour/NSD service is:
 
 ```text
 GalaxyBridge._http._tcp.local
@@ -51,6 +59,32 @@ Android_xxxxx.local:8787
 ```
 
 If mDNS is blocked by the router, guest Wi-Fi isolation, VPN rules, or phone power management, use the Android phone's LAN IP directly.
+
+The BLE discovery service exposes a small JSON endpoint descriptor:
+
+```json
+{
+  "version": 1,
+  "name": "GalaxyBridge",
+  "host": "192.168.x.x",
+  "port": 8787,
+  "path": "/sync/sleep",
+  "health": "/health",
+  "tokenHeader": "X-Bridge-Token"
+}
+```
+
+The BLE service UUID is:
+
+```text
+8E4B7F20-0F74-4DB7-9C71-FB7A2D22C001
+```
+
+The endpoint characteristic UUID is:
+
+```text
+8E4B7F21-0F74-4DB7-9C71-FB7A2D22C001
+```
 
 Transport is plain HTTP by default. This is intended for a trusted home LAN. HTTPS for `.local` names requires installing and trusting a local certificate authority on iOS, so it is not enabled by default.
 
@@ -75,9 +109,12 @@ Free Apple developer signing expires after 7 days. For long-term use, use a paid
 
 1. The Android app reads Samsung Health sleep sessions through Health Connect.
 2. It exposes a local API on port `8787`.
-3. The iOS app requests `/sync/sleep` and writes sleep stages into Apple Health.
+3. The Android app advertises the endpoint through Bonjour/mDNS and BLE discovery.
+4. The iOS app can auto-discover the Android endpoint, requests `/sync/sleep`, and writes new sleep stages into Apple Health.
 
 The Android API currently returns only Samsung Health records with non-empty, valid stage data.
+
+The iOS writer skips sleep records that were already imported by GalaxyBridge. This allows the Android server to return full history while the iPhone only writes new nights.
 
 ## Android
 
@@ -114,6 +151,13 @@ The app also advertises Bonjour/NSD service discovery as:
 GalaxyBridge._http._tcp.local
 ```
 
+It also advertises a BLE GATT service for endpoint discovery. BLE discovery requires Android 12+ Bluetooth runtime permissions on newer devices:
+
+```text
+android.permission.BLUETOOTH_ADVERTISE
+android.permission.BLUETOOTH_CONNECT
+```
+
 ### Android Permissions
 
 The Android app needs:
@@ -122,6 +166,7 @@ The Android app needs:
 - Network access for the local HTTP server.
 - Foreground service permission to keep the server alive.
 - Wi-Fi/multicast permissions for local discovery.
+- Bluetooth advertise/connect permissions for BLE endpoint discovery.
 - Battery optimization exemption is recommended for stable background service behavior.
 
 If Health Connect permissions are missing, open the app and grant the requested Health Connect permissions before starting sync.
@@ -142,6 +187,8 @@ The default open-source token placeholder is:
 ```text
 change-me
 ```
+
+The iOS app includes an `Auto Discover` button. It scans for the Android BLE discovery service, reads the advertised endpoint, fills the Android IP and port, and then syncs over HTTP as usual. iOS will ask for Bluetooth permission the first time discovery runs; this is not Bluetooth pairing.
 
 Free Apple developer signing expires after 7 days. A paid Apple Developer Program account is recommended for long-lived installs.
 
@@ -200,6 +247,7 @@ The iOS app needs:
 - `com.apple.developer.healthkit` entitlement in the signed app.
 - User-granted HealthKit permission to write sleep analysis.
 - Local network access to reach the Android device.
+- Bluetooth permission if you want to use BLE-assisted discovery.
 
 If the app reports a missing HealthKit entitlement, rebuild and install it through Xcode or a signing profile that preserves HealthKit. Generic sideload resigning may remove this entitlement.
 
@@ -209,6 +257,7 @@ The apps include basic error reporting for the most common failure modes:
 
 - Android server not running or unreachable.
 - Missing Android Health Connect permission.
+- Missing Android or iOS Bluetooth permission for BLE discovery.
 - Invalid bridge token.
 - JSON decode failures on iOS, including a response preview.
 - HealthKit permission or entitlement errors.
@@ -238,15 +287,21 @@ If Bonjour is blocked by the router or Wi-Fi isolation, use the Android phone's 
 http://192.168.x.x:8787
 ```
 
+If both IP addresses and Bonjour are inconvenient, use `Auto Discover` in the iOS app. BLE discovery should find the Android phone's current LAN IP and port, then normal sync continues over HTTP.
+
 ## Security
 
 The local API is protected only by a shared token and is intended for trusted home LAN use. Do not expose it to the public internet without adding stronger authentication and TLS.
+
+BLE discovery intentionally does not include the bridge token or health data. It only reveals the Android device's local HTTP endpoint. Treat the LAN and nearby Bluetooth environment as semi-trusted, and keep the token private.
 
 ## Known Limitations
 
 - This is a local LAN sync tool, not a cloud service.
 - HTTPS is not enabled by default.
 - Bonjour discovery depends on the local router and Wi-Fi configuration.
+- BLE discovery requires Bluetooth permissions on both phones and only discovers the endpoint; data transfer still requires both devices to be on the same reachable local network.
+- BLE discovery is primarily a foreground convenience feature on iOS. Background sync should rely on the saved endpoint once discovery has populated it.
 - iOS HealthKit writing requires a valid HealthKit entitlement.
 - Free Apple developer signing expires after 7 days.
 - The Android server currently focuses on Samsung Health staged sleep data.
