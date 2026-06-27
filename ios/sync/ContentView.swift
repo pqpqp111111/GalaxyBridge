@@ -3,6 +3,7 @@ import HealthKit
 
 struct ContentView: View {
     @ObservedObject var syncManager: SleepSyncManager
+    @StateObject private var discoveryManager = BridgeDiscoveryManager()
     @State private var showSettings = false
     @State private var serverIP: String = UserDefaults.standard.string(forKey: "serverIP") ?? ""
     @State private var port: String = UserDefaults.standard.string(forKey: "port") ?? "8787"
@@ -49,6 +50,23 @@ struct ContentView: View {
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .frame(width: 70)
                     }
+
+                    Button(action: {
+                        discoverBridge()
+                    }) {
+                        HStack {
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                            Text(discoveryManager.isScanning ? "Discovering..." : "Auto Discover")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(discoveryManager.isScanning)
+
+                    Text(discoveryManager.status)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
                 }
                 .padding(.horizontal)
 
@@ -114,6 +132,11 @@ struct ContentView: View {
             }
             .navigationTitle("")
             .navigationBarHidden(true)
+            .onAppear {
+                if serverIP.isEmpty {
+                    discoverBridge()
+                }
+            }
         }
     }
 
@@ -121,6 +144,14 @@ struct ContentView: View {
         UserDefaults.standard.set(serverIP, forKey: "serverIP")
         UserDefaults.standard.set(port, forKey: "port")
         syncManager.updateServer(ip: serverIP, port: port)
+    }
+
+    private func discoverBridge() {
+        discoveryManager.scan { endpoint in
+            serverIP = endpoint.host
+            port = String(endpoint.port)
+            saveIP()
+        }
     }
 }
 

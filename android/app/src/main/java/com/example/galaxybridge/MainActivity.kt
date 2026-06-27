@@ -15,6 +15,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.lifecycleScope
@@ -55,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         reader = HealthConnectReader(this)
 
         updateIPAddress()
+        requestBluetoothPermissionsIfNeeded()
 
         findViewById<Button>(R.id.btnDiag).setOnClickListener {
             appendStatus("--- 诊断 ---")
@@ -159,6 +161,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ensureKeepAlivePermissions() {
+        requestBluetoothPermissionsIfNeeded()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ActivityCompat.requestPermissions(
                 this,
@@ -182,6 +186,28 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             appendStatus("电池优化白名单: 已允许")
+        }
+    }
+
+    private fun requestBluetoothPermissionsIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+
+        val missing = arrayOf(
+            Manifest.permission.BLUETOOTH_ADVERTISE,
+            Manifest.permission.BLUETOOTH_CONNECT
+        ).filter {
+            ContextCompat.checkSelfPermission(this, it) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missing.isNotEmpty()) {
+            appendStatus("请求蓝牙权限，用于让 iPhone 自动发现本机 HTTP server")
+            ActivityCompat.requestPermissions(
+                this,
+                missing.toTypedArray(),
+                REQUEST_BLUETOOTH_DISCOVERY
+            )
+        } else {
+            appendStatus("蓝牙发现权限: 已允许")
         }
     }
 
@@ -259,5 +285,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val REQUEST_POST_NOTIFICATIONS = 1001
+        private const val REQUEST_BLUETOOTH_DISCOVERY = 1002
     }
 }

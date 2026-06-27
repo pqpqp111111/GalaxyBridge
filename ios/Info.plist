@@ -31,9 +31,11 @@
 	<string>GalaxyBridge needs access to write sleep data to Apple Health.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>GalaxyBridge connects to the Android phone on your local Wi-Fi network to import sleep data.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>GalaxyBridge uses Bluetooth only to discover the Android sync server address. Sleep data is still transferred over your local Wi-Fi network.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>com.example.galaxybridge.sync.refresh</string>
+		<string>class-schedule.sync.refresh</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

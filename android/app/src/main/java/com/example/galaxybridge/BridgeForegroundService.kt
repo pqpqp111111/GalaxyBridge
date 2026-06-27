@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat
 class BridgeForegroundService : Service() {
     private var server: BridgeServer? = null
     private var nsdRegistrar: NsdServiceRegistrar? = null
+    private var bleDiscoveryAdvertiser: BleDiscoveryAdvertiser? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -39,6 +40,8 @@ class BridgeForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        bleDiscoveryAdvertiser?.stop()
+        bleDiscoveryAdvertiser = null
         nsdRegistrar?.stop()
         nsdRegistrar = null
         server?.stop()
@@ -65,6 +68,7 @@ class BridgeForegroundService : Service() {
         val syncState = SyncState(this)
         server = BridgeServer(reader, syncState, token).also { it.start(PORT) }
         nsdRegistrar = NsdServiceRegistrar(this, PORT).also { it.start() }
+        bleDiscoveryAdvertiser = BleDiscoveryAdvertiser(this, PORT).also { it.start() }
         Log.i(TAG, "Bridge server started")
     }
 
@@ -153,7 +157,7 @@ class BridgeForegroundService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("GalaxyBridge")
-            .setContentText("Sync server running on port $PORT with Bonjour discovery")
+            .setContentText("Sync server running on port $PORT with Bonjour and BLE discovery")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
